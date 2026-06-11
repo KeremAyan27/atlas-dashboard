@@ -14,6 +14,7 @@ import {
   PieChart,
   ReferenceDot,
   ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -99,12 +100,15 @@ export default function SalesPage() {
             <LineChart
               data={months}
               onClick={(state) => {
-                const i = state?.activeTooltipIndex;
-                if (typeof i === "number") setSelected(i);
+                // Recharts 3.x reports the index as a string
+                const i = Number(state?.activeTooltipIndex);
+                if (Number.isInteger(i) && i >= 0) setSelected(i);
               }}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
             >
               <CartesianGrid stroke={CHART.line} vertical={false} />
+              {/* hidden tooltip: enables tap/click month tracking on mobile */}
+              <Tooltip content={() => null} cursor={false} />
               <XAxis
                 dataKey="label"
                 tick={{ fill: CHART.faint, fontSize: 10 }}
