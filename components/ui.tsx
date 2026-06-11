@@ -81,6 +81,46 @@ export function LoadingState({ label = "Loading…" }: { label?: string }) {
   );
 }
 
+export function EmptyState({
+  message = "No data in selected range.",
+}: {
+  message?: string;
+}) {
+  return (
+    <Card className="p-6 text-center">
+      <div className="text-[13px] font-semibold">{message}</div>
+      <div className="mt-1 text-xs text-sub">
+        Adjust the filters above to widen the selection.
+      </div>
+    </Card>
+  );
+}
+
+/** Compact 2–3 card strip summarizing the filtered slice. */
+export function SummaryStrip({
+  items,
+}: {
+  items: { label: string; value: string; note: string }[];
+}) {
+  return (
+    <div className={`grid gap-2 ${items.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+      {items.map((item) => (
+        <Card key={item.label} className="p-2.5">
+          <div className="text-[9.5px] font-semibold tracking-wide text-faint uppercase">
+            {item.label}
+          </div>
+          <div className="font-display mt-0.5 text-[15px] font-bold tracking-tight">
+            {item.value}
+          </div>
+          <div className="mt-0.5 text-[9.5px] leading-snug text-sub">
+            {item.note}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function ErrorState({ message }: { message: string }) {
   return (
     <div className="mx-4 my-8 rounded-card border border-red/30 bg-red/10 p-4 text-center">

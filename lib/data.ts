@@ -17,11 +17,11 @@ import type {
 const DATA_DIR = path.join(process.cwd(), "data");
 
 /**
- * The dataset covers 01.01.2025 – 31.12.2025. All "today"-relative logic
- * (days overdue, last-30-days trend) is anchored to the end of the dataset so
- * the dashboard is stable and demonstrable regardless of the real clock.
+ * All "today"-relative logic (days overdue, trends, filter presets) is
+ * anchored to the end of the dataset so the dashboard is stable and
+ * demonstrable regardless of the real clock. See lib/date-range.ts.
  */
-export const REFERENCE_DATE = "2025-12-31";
+export { REFERENCE_DATE } from "./date-range";
 
 const cache = new Map<string, unknown>();
 

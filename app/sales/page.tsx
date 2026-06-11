@@ -1,7 +1,8 @@
 "use client";
 
-// Sales Analytics — monthly revenue with tap-to-focus + anomaly labels,
-// time-range filter, category pie and city ranking (report §7.2/03-05).
+// Sales Analytics — global date filter + category/channel filters, summary
+// strip, monthly revenue with tap-to-focus and anomaly labels, category pie
+// and city ranking (report §7.2/03-05).
 
 import { useMemo, useState } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
@@ -21,23 +22,30 @@ import {
 import { useApi } from "@/lib/use-api";
 import { formatTLCompact } from "@/lib/format";
 import { useTheme } from "@/components/theme";
-import { Card, ErrorState, LoadingState, SEVERITY } from "@/components/ui";
+import { DateRangeFilter, FilterSelect, useFilters } from "@/components/filters";
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SEVERITY,
+  SummaryStrip,
+} from "@/components/ui";
 import type { SalesResponse } from "@/types/atlas";
 
-const RANGES = [
-  { label: "Last 3 Months", value: 3 },
-  { label: "Last 6 Months", value: 6 },
-  { label: "12 Months", value: 12 },
-] as const;
-
-
 export default function SalesPage() {
-  const [range, setRange] = useState<number>(12);
+  const { from, to } = useFilters();
+  const [category, setCategory] = useState("all");
+  const [channel, setChannel] = useState("all");
+  const [selected, setSelected] = useState(0); // tap-to-focus index
   const { chart } = useTheme();
   const PIE_COLORS = [chart.mint, chart.blue, chart.violet, chart.amber, chart.faint];
-  const [selected, setSelected] = useState(2); // tap-to-focus index
+
+  const query = new URLSearchParams({ from, to });
+  if (category !== "all") query.set("category", category);
+  if (channel !== "all") query.set("channel", channel);
   const { data, loading, error } = useApi<SalesResponse>(
-    `/api/sales?range=${range}`,
+    `/api/sales?${query.toString()}`,
   );
 
   const months = useMemo(
@@ -49,197 +57,252 @@ export default function SalesPage() {
     [data],
   );
 
-  if (loading) return <LoadingState label="Loading sales analytics…" />;
-  if (error || !data) return <ErrorState message={error ?? "No data"} />;
-
-  const sel = Math.min(selected, months.length - 1);
-  const point = months[sel];
-  const anomaly = point.anomaly;
+  const facetOptions = (values: string[], allLabel: string) => [
+    { value: "all", label: allLabel },
+    ...values.map((v) => ({ value: v, label: v })),
+  ];
 
   return (
     <div className="flex flex-col gap-3.5 p-4">
-      {/* time-range filter */}
-      <div className="flex gap-2">
-        {RANGES.map((r) => (
-          <button
-            key={r.value}
-            onClick={() => {
-              setRange(r.value);
+      <DateRangeFilter />
+
+      {data && (
+        <div className="flex gap-2">
+          <FilterSelect
+            label="Category"
+            value={category}
+            options={facetOptions(data.facets.categories, "All Categories")}
+            onChange={(v) => {
+              setCategory(v);
               setSelected(0);
             }}
-            className={`flex-1 cursor-pointer rounded-[10px] border py-2 text-xs font-semibold ${
-              range === r.value
-                ? "border-mint bg-mint text-on-accent"
-                : "border-line text-sub"
-            }`}
-          >
-            {r.label}
-          </button>
-        ))}
-      </div>
+          />
+          <FilterSelect
+            label="Channel"
+            value={channel}
+            options={facetOptions(data.facets.channels, "All Channels")}
+            onChange={(v) => {
+              setChannel(v);
+              setSelected(0);
+            }}
+          />
+        </div>
+      )}
 
-      {/* monthly revenue, tap a point to focus */}
-      <Card className="p-4">
-        <div className="mb-1 flex justify-between">
-          <span className="text-[13.5px] font-semibold">Monthly Revenue</span>
-          <span className="text-[10.5px] text-faint">tap a month →</span>
-        </div>
-        <div className="mb-1 flex items-baseline gap-2.5">
-          <span className="font-display text-[25px] font-bold">
-            {formatTLCompact(point.revenue)}
-          </span>
-          {point.changePct !== null && (
-            <span
-              className={`text-[13px] font-semibold ${point.changePct >= 0 ? "text-mint" : "text-red"}`}
-            >
-              {point.changePct >= 0 ? "+" : ""}
-              {point.changePct.toFixed(1)}% · {point.label}
-            </span>
-          )}
-        </div>
-        <div className="-mx-1.5 h-[158px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={months}
-              onClick={(state) => {
-                // Recharts 3.x reports the index as a string
-                const i = Number(state?.activeTooltipIndex);
-                if (Number.isInteger(i) && i >= 0) setSelected(i);
-              }}
-              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid stroke={chart.line} vertical={false} />
-              {/* hidden tooltip: enables tap/click month tracking on mobile */}
-              <Tooltip content={() => null} cursor={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: chart.faint, fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                interval={0}
-              />
-              <YAxis
-                tick={{ fill: chart.faint, fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                width={30}
-                tickFormatter={(v: number) => v.toFixed(1)}
-              />
-              <Line
-                type="monotone"
-                dataKey="valueM"
-                stroke={chart.mint}
-                strokeWidth={2.4}
-                dot={{ r: 2.5, fill: chart.bg, stroke: chart.mint, strokeWidth: 1.5 }}
-                activeDot={{ r: 5, fill: chart.mint }}
-              />
-              <ReferenceDot
-                x={point.label}
-                y={point.valueM}
-                r={6}
-                fill={chart.text}
-                stroke={chart.mint}
-                strokeWidth={2}
-              />
-              {months
-                .filter((m) => m.anomaly)
-                .map((m) => (
-                  <ReferenceDot
-                    key={m.month}
-                    x={m.label}
-                    y={m.valueM}
-                    r={3.5}
-                    fill={m.anomaly?.type === "revenue_drop" ? chart.red : chart.amber}
-                  />
+      {loading && <LoadingState label="Loading sales analytics…" />}
+      {!loading && (error || !data) && <ErrorState message={error ?? "No data"} />}
+
+      {data && months.length === 0 && <EmptyState />}
+
+      {data && months.length > 0 && (
+        <>
+          <SummaryStrip
+            items={[
+              {
+                label: "Revenue",
+                value: formatTLCompact(data.summary.revenue),
+                note: "delivered revenue in selected range",
+              },
+              {
+                label: "Orders",
+                value: data.summary.orders.toLocaleString("tr-TR"),
+                note: `${data.summary.orders.toLocaleString("tr-TR")} delivered orders match the filters`,
+              },
+              {
+                label: "Avg Order",
+                value: formatTLCompact(data.summary.avgOrderValue),
+                note: "revenue ÷ filtered orders",
+              },
+            ]}
+          />
+
+          <MonthlyChart
+            months={months}
+            selected={Math.min(selected, months.length - 1)}
+            onSelect={setSelected}
+            chart={chart}
+          />
+
+          {/* category distribution */}
+          <Card className="p-4">
+            <div className="mb-1.5 text-[13.5px] font-semibold">
+              Category Distribution
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="size-[120px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={data.categories}
+                      dataKey="sharePct"
+                      nameKey="name"
+                      innerRadius={32}
+                      outerRadius={56}
+                      paddingAngle={2}
+                      stroke="none"
+                    >
+                      {data.categories.map((c, i) => (
+                        <Cell key={c.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1">
+                {data.categories.map((c, i) => (
+                  <div key={c.name} className="mb-1.5 flex items-center gap-2 text-xs">
+                    <span
+                      className="size-[9px] rounded-[3px]"
+                      style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
+                    />
+                    <span className="flex-1 text-sub">{c.name}</span>
+                    <span className="font-semibold">%{c.sharePct}</span>
+                  </div>
                 ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        {anomaly ? (
-          <div
-            className={`flex items-center gap-2 rounded-xl px-2.5 py-2 ${SEVERITY[anomaly.severity].chipBg}`}
-          >
-            {anomaly.type === "revenue_drop" ? (
-              <TrendingDown size={15} className="text-red" />
-            ) : (
-              <TrendingUp size={15} className="text-amber" />
-            )}
-            <span className="text-xs">{anomaly.message}</span>
-          </div>
-        ) : (
-          <div className="text-[11.5px] text-faint">
-            No anomaly for this month.
-          </div>
-        )}
-      </Card>
-
-      {/* category distribution */}
-      <Card className="p-4">
-        <div className="mb-1.5 text-[13.5px] font-semibold">
-          Category Distribution
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="size-[120px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data.categories}
-                  dataKey="sharePct"
-                  nameKey="name"
-                  innerRadius={32}
-                  outerRadius={56}
-                  paddingAngle={2}
-                  stroke="none"
-                >
-                  {data.categories.map((c, i) => (
-                    <Cell key={c.name} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex-1">
-            {data.categories.map((c, i) => (
-              <div key={c.name} className="mb-1.5 flex items-center gap-2 text-xs">
-                <span
-                  className="size-[9px] rounded-[3px]"
-                  style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
-                />
-                <span className="flex-1 text-sub">{c.name}</span>
-                <span className="font-semibold">%{c.sharePct}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      {/* city ranking */}
-      <Card className="p-4">
-        <div className="mb-3 text-[13.5px] font-semibold">
-          Revenue by City (M ₺)
-        </div>
-        {data.cities.map((c) => {
-          const max = Math.max(...data.cities.map((x) => x.revenue));
-          return (
-            <div key={c.name} className="mb-2.5">
-              <div className="mb-1 flex justify-between text-xs">
-                <span className="text-sub">{c.name}</span>
-                <span className="font-semibold">
-                  {(c.revenue / 1_000_000).toLocaleString("tr-TR", {
-                    maximumFractionDigits: 1,
-                  })}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-panel2">
-                <div
-                  className="h-full rounded-full bg-blue"
-                  style={{ width: `${(c.revenue / max) * 100}%` }}
-                />
               </div>
             </div>
-          );
-        })}
-      </Card>
+          </Card>
+
+          {/* city ranking */}
+          <Card className="p-4">
+            <div className="mb-3 text-[13.5px] font-semibold">
+              Revenue by City (M ₺)
+            </div>
+            {data.cities.map((c) => {
+              const max = Math.max(...data.cities.map((x) => x.revenue));
+              return (
+                <div key={c.name} className="mb-2.5">
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span className="text-sub">{c.name}</span>
+                    <span className="font-semibold">
+                      {(c.revenue / 1_000_000).toLocaleString("tr-TR", {
+                        maximumFractionDigits: 1,
+                      })}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-panel2">
+                    <div
+                      className="h-full rounded-full bg-blue"
+                      style={{ width: `${(c.revenue / max) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+        </>
+      )}
     </div>
+  );
+}
+
+type MonthPoint = SalesResponse["months"][number] & { valueM: number };
+
+function MonthlyChart({
+  months,
+  selected,
+  onSelect,
+  chart,
+}: {
+  months: MonthPoint[];
+  selected: number;
+  onSelect: (i: number) => void;
+  chart: ReturnType<typeof useTheme>["chart"];
+}) {
+  const point = months[selected];
+  const anomaly = point.anomaly;
+
+  return (
+    <Card className="p-4">
+      <div className="mb-1 flex justify-between">
+        <span className="text-[13.5px] font-semibold">Monthly Revenue</span>
+        <span className="text-[10.5px] text-faint">tap a month →</span>
+      </div>
+      <div className="mb-1 flex items-baseline gap-2.5">
+        <span className="font-display text-[25px] font-bold">
+          {formatTLCompact(point.revenue)}
+        </span>
+        {point.changePct !== null && (
+          <span
+            className={`text-[13px] font-semibold ${point.changePct >= 0 ? "text-mint" : "text-red"}`}
+          >
+            {point.changePct >= 0 ? "+" : ""}
+            {point.changePct.toFixed(1)}% · {point.label}
+          </span>
+        )}
+      </div>
+      <div className="-mx-1.5 h-[158px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart
+            data={months}
+            onClick={(state) => {
+              // Recharts 3.x reports the index as a string
+              const i = Number(state?.activeTooltipIndex);
+              if (Number.isInteger(i) && i >= 0) onSelect(i);
+            }}
+            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+          >
+            <CartesianGrid stroke={chart.line} vertical={false} />
+            {/* hidden tooltip: enables tap/click month tracking on mobile */}
+            <Tooltip content={() => null} cursor={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: chart.faint, fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+            />
+            <YAxis
+              tick={{ fill: chart.faint, fontSize: 10 }}
+              axisLine={false}
+              tickLine={false}
+              width={30}
+              tickFormatter={(v: number) => v.toFixed(1)}
+            />
+            <Line
+              type="monotone"
+              dataKey="valueM"
+              stroke={chart.mint}
+              strokeWidth={2.4}
+              dot={{ r: 2.5, fill: chart.bg, stroke: chart.mint, strokeWidth: 1.5 }}
+              activeDot={{ r: 5, fill: chart.mint }}
+            />
+            <ReferenceDot
+              x={point.label}
+              y={point.valueM}
+              r={6}
+              fill={chart.text}
+              stroke={chart.mint}
+              strokeWidth={2}
+            />
+            {months
+              .filter((m) => m.anomaly)
+              .map((m) => (
+                <ReferenceDot
+                  key={m.month}
+                  x={m.label}
+                  y={m.valueM}
+                  r={3.5}
+                  fill={m.anomaly?.type === "revenue_drop" ? chart.red : chart.amber}
+                />
+              ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {anomaly ? (
+        <div
+          className={`flex items-center gap-2 rounded-xl px-2.5 py-2 ${SEVERITY[anomaly.severity].chipBg}`}
+        >
+          {anomaly.type === "revenue_drop" ? (
+            <TrendingDown size={15} className="text-red" />
+          ) : (
+            <TrendingUp size={15} className="text-amber" />
+          )}
+          <span className="text-xs">{anomaly.message}</span>
+        </div>
+      ) : (
+        <div className="text-[11.5px] text-faint">No anomaly for this month.</div>
+      )}
+    </Card>
   );
 }

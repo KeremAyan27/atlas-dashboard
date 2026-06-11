@@ -1,14 +1,19 @@
-// GET /api/sales?range=3|6|12 → monthly revenue (with anomaly labels from the
-// alert engine), category distribution and city ranking.
+// GET /api/sales?from&to&category&channel → monthly revenue (with anomaly
+// labels from the alert engine), category distribution, city ranking and a
+// summary of the filtered slice.
+//
+// When a category filter is active, revenue is the sum of matching item
+// subtotals (an order can span categories); otherwise order totals are used.
 
 import { NextRequest, NextResponse } from "next/server";
-import { detectRevenueAnomalies } from "@/lib/alert-engine";
-import { monthLabel } from "@/lib/alert-engine";
-import { getOrders, getProducts, monthlyDeliveredRevenue } from "@/lib/data";
+import { detectRevenueAnomalies, monthLabel } from "@/lib/alert-engine";
+import { getOrders, getProducts } from "@/lib/data";
+import { normalizeRange } from "@/lib/date-range";
 import type {
   CategoryShare,
   CityRevenue,
   MonthlyRevenuePoint,
+  Order,
   SalesResponse,
 } from "@/types/atlas";
 
@@ -16,58 +21,78 @@ const TOP_CITIES = 5;
 
 export async function GET(req: NextRequest) {
   try {
-    const range = Math.min(
-      Math.max(Number(req.nextUrl.searchParams.get("range") ?? 12) || 12, 1),
-      12,
-    );
+    const params = req.nextUrl.searchParams;
+    const { from, to } = normalizeRange(params.get("from"), params.get("to"));
+    const category = params.get("category") || null;
+    const channel = params.get("channel") || null;
+
     const [orders, products] = await Promise.all([getOrders(), getProducts()]);
-    const delivered = orders.filter((o) => o.status === "delivered");
-
-    // Monthly revenue + rule R1 anomaly labels
-    const anomalies = detectRevenueAnomalies(orders);
-    const entries = [...monthlyDeliveredRevenue(orders).entries()];
-    const months: MonthlyRevenuePoint[] = entries
-      .map(([month, revenue], i) => ({
-        month,
-        label: monthLabel(month),
-        revenue: Math.round(revenue),
-        changePct:
-          i > 0
-            ? ((revenue - entries[i - 1][1]) / entries[i - 1][1]) * 100
-            : null,
-        anomaly: anomalies.find((a) => a.id === `R1-${month}`) ?? null,
-      }))
-      .slice(-range);
-
-    // Category distribution (order items joined to the product catalog)
     const categoryById = new Map(products.map((p) => [p.productId, p.category]));
+
+    const delivered = orders.filter(
+      (o) =>
+        o.status === "delivered" &&
+        o.orderDate >= from &&
+        o.orderDate <= to &&
+        (!channel || o.channel === channel),
+    );
+
+    // Revenue contribution of one order under the active category filter.
+    const orderRevenue = (o: Order): number =>
+      category
+        ? o.items
+            .filter((it) => categoryById.get(it.productId) === category)
+            .reduce((s, it) => s + it.subtotal, 0)
+        : o.totalAmount;
+
+    // Monthly revenue + rule R1 anomaly labels (engine runs on the full
+    // dataset so labels stay consistent with the Alert Center).
+    const anomalies = detectRevenueAnomalies(orders);
+    const byMonth = new Map<string, number>();
+    for (const o of delivered) {
+      const month = o.orderDate.slice(0, 7);
+      byMonth.set(month, (byMonth.get(month) ?? 0) + orderRevenue(o));
+    }
+    const entries = [...byMonth.entries()].sort();
+    const months: MonthlyRevenuePoint[] = entries.map(([month, revenue], i) => ({
+      month,
+      label: monthLabel(month),
+      revenue: Math.round(revenue),
+      changePct:
+        i > 0 && entries[i - 1][1] > 0
+          ? ((revenue - entries[i - 1][1]) / entries[i - 1][1]) * 100
+          : null,
+      anomaly: anomalies.find((a) => a.id === `R1-${month}`) ?? null,
+    }));
+
+    // Category distribution (range/channel filtered; not category filtered,
+    // so the pie always shows where the filtered revenue sits).
     const byCategory = new Map<string, number>();
-    for (const order of delivered)
-      for (const item of order.items) {
-        const category = categoryById.get(item.productId) ?? "Other";
-        byCategory.set(category, (byCategory.get(category) ?? 0) + item.subtotal);
+    for (const o of delivered)
+      for (const it of o.items) {
+        const cat = categoryById.get(it.productId) ?? "Other";
+        byCategory.set(cat, (byCategory.get(cat) ?? 0) + it.subtotal);
       }
     const grandTotal = [...byCategory.values()].reduce((s, v) => s + v, 0);
     const categories: CategoryShare[] = [...byCategory.entries()]
       .map(([name, revenue]) => ({
         name,
         revenue: Math.round(revenue),
-        sharePct: Math.round((revenue / grandTotal) * 100),
+        sharePct: grandTotal > 0 ? Math.round((revenue / grandTotal) * 100) : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue);
 
-    // City ranking (top cities + the rest aggregated)
+    // City ranking under all active filters
     const byCity = new Map<string, number>();
-    for (const order of delivered)
-      byCity.set(order.city, (byCity.get(order.city) ?? 0) + order.totalAmount);
+    for (const o of delivered) {
+      const value = orderRevenue(o);
+      if (value > 0) byCity.set(o.city, (byCity.get(o.city) ?? 0) + value);
+    }
     const ranked = [...byCity.entries()].sort((a, b) => b[1] - a[1]);
-    const top = ranked.slice(0, TOP_CITIES);
+    const cities: CityRevenue[] = ranked
+      .slice(0, TOP_CITIES)
+      .map(([name, revenue]) => ({ name, revenue: Math.round(revenue), cityCount: 1 }));
     const rest = ranked.slice(TOP_CITIES);
-    const cities: CityRevenue[] = top.map(([name, revenue]) => ({
-      name,
-      revenue: Math.round(revenue),
-      cityCount: 1,
-    }));
     if (rest.length > 0)
       cities.push({
         name: `Other (${rest.length} cities)`,
@@ -75,7 +100,24 @@ export async function GET(req: NextRequest) {
         cityCount: rest.length,
       });
 
-    const body: SalesResponse = { months, categories, cities };
+    // Summary of the filtered slice
+    const contributing = delivered.filter((o) => orderRevenue(o) > 0);
+    const revenue = contributing.reduce((s, o) => s + orderRevenue(o), 0);
+
+    const body: SalesResponse = {
+      months,
+      categories,
+      cities,
+      summary: {
+        revenue: Math.round(revenue),
+        orders: contributing.length,
+        avgOrderValue: contributing.length > 0 ? revenue / contributing.length : 0,
+      },
+      facets: {
+        categories: [...new Set(products.map((p) => p.category))].sort(),
+        channels: [...new Set(orders.map((o) => o.channel))].sort(),
+      },
+    };
     return NextResponse.json(body);
   } catch {
     return NextResponse.json(

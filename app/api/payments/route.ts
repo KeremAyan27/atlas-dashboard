@@ -1,33 +1,61 @@
-// GET /api/payments → collection status totals plus the overdue payment list
-// (joined to orders for the customer name, days overdue vs REFERENCE_DATE).
+// GET /api/payments?from&to&status → collection totals per status within the
+// range (matched on dueDate) and the matching payment list, joined to orders
+// for the customer name. The list is capped; matchingCount is the full total.
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { daysBetween, getOrders, getPayments, REFERENCE_DATE } from "@/lib/data";
-import type { OverduePayment, PaymentsResponse } from "@/types/atlas";
+import { normalizeRange } from "@/lib/date-range";
+import type {
+  ListedPayment,
+  PaymentsResponse,
+  PaymentStatus,
+} from "@/types/atlas";
 
-export async function GET() {
+const LIST_CAP = 30;
+const STATUSES: PaymentStatus[] = ["paid", "pending", "overdue"];
+
+export async function GET(req: NextRequest) {
   try {
+    const params = req.nextUrl.searchParams;
+    const { from, to } = normalizeRange(params.get("from"), params.get("to"));
+    const statusParam = params.get("status");
+    const status = STATUSES.find((s) => s === statusParam) ?? null;
+
     const [payments, orders] = await Promise.all([getPayments(), getOrders()]);
     const customerByOrder = new Map(
       orders.map((o) => [o.orderId, o.customerName]),
     );
 
-    const totals = { paid: 0, pending: 0, overdue: 0 };
-    for (const p of payments) totals[p.status] += 1;
+    const inRange = payments.filter(
+      (p) => p.dueDate.slice(0, 10) >= from && p.dueDate.slice(0, 10) <= to,
+    );
 
-    const overduePayments: OverduePayment[] = payments
-      .filter((p) => p.status === "overdue")
+    // Per-status totals for the summary strip (range only, status-agnostic)
+    const summary = {
+      paid: { amount: 0, count: 0 },
+      pending: { amount: 0, count: 0 },
+      overdue: { amount: 0, count: 0 },
+    };
+    for (const p of inRange) {
+      summary[p.status].amount += p.amount;
+      summary[p.status].count += 1;
+    }
+
+    const matching = inRange.filter((p) => !status || p.status === status);
+    const listed: ListedPayment[] = matching
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, LIST_CAP)
       .map((p) => ({
         ...p,
         customerName: customerByOrder.get(p.orderId) ?? "Unknown customer",
-        daysOverdue: daysBetween(p.dueDate, REFERENCE_DATE),
-      }))
-      .sort((a, b) => b.amount - a.amount);
+        daysOverdue:
+          p.status === "overdue" ? daysBetween(p.dueDate, REFERENCE_DATE) : null,
+      }));
 
     const body: PaymentsResponse = {
-      totals,
-      overdueAmount: overduePayments.reduce((s, p) => s + p.amount, 0),
-      overduePayments,
+      summary,
+      payments: listed,
+      matchingCount: matching.length,
       referenceDate: REFERENCE_DATE,
     };
     return NextResponse.json(body);

@@ -29,6 +29,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+import { FilterProvider } from "@/components/filters";
 import { ThemeProvider, useTheme } from "@/components/theme";
 import { useApi } from "@/lib/use-api";
 import { formatDate } from "@/lib/format";
@@ -95,7 +96,9 @@ export function AlertIcon({ alert, size = 15 }: { alert: EngineAlert; size?: num
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <Shell>{children}</Shell>
+      <FilterProvider>
+        <Shell>{children}</Shell>
+      </FilterProvider>
     </ThemeProvider>
   );
 }

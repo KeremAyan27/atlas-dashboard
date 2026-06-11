@@ -1,30 +1,62 @@
 "use client";
 
-// Overview — 4 KPI cards + 30-day revenue trend (report §7.2/01-02).
+// Overview — date filter, summary strip, 4 KPI cards and the revenue trend
+// for the selected range, with anomaly dots from the alert engine.
 
 import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import {
   Area,
   AreaChart,
+  ReferenceDot,
   ResponsiveContainer,
   XAxis,
   YAxis,
 } from "recharts";
 import { useApi } from "@/lib/use-api";
-import { formatPct, formatTLCompact } from "@/lib/format";
+import { formatDate, formatPct, formatTLCompact } from "@/lib/format";
 import { useTheme } from "@/components/theme";
-import { Card, ErrorState, LoadingState } from "@/components/ui";
+import { DateRangeFilter, useFilters } from "@/components/filters";
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SummaryStrip,
+} from "@/components/ui";
+import type { ChartPalette } from "@/components/theme";
 import type { OverviewResponse } from "@/types/atlas";
 
 export default function OverviewPage() {
-  const { data, loading, error } = useApi<OverviewResponse>("/api/overview");
+  const { from, to } = useFilters();
+  const { data, loading, error } = useApi<OverviewResponse>(
+    `/api/overview?from=${from}&to=${to}`,
+  );
   const { chart } = useTheme();
 
-  if (loading) return <LoadingState label="Loading KPIs…" />;
-  if (error || !data) return <ErrorState message={error ?? "No data"} />;
+  return (
+    <div className="flex flex-col gap-3.5 p-4">
+      <DateRangeFilter />
 
-  const { kpis, revenueDaily } = data;
+      {loading && <LoadingState label="Loading KPIs…" />}
+      {!loading && (error || !data) && <ErrorState message={error ?? "No data"} />}
+      {data && data.revenueDaily.length === 0 && <EmptyState />}
+      {data && data.revenueDaily.length > 0 && (
+        <OverviewContent data={data} chart={chart} />
+      )}
+    </div>
+  );
+}
+
+function OverviewContent({
+  data,
+  chart,
+}: {
+  data: OverviewResponse;
+  chart: ChartPalette;
+}) {
+  const { kpis, revenueDaily, anomalies, summary } = data;
+
   const cards = [
     {
       key: "revenue",
@@ -32,38 +64,66 @@ export default function OverviewPage() {
       value: formatTLCompact(kpis.revenue),
       changePct: kpis.revenueChangePct,
       href: "/sales",
+      danger: false,
     },
     {
       key: "conversion",
       label: "Conversion Rate",
       value: `%${kpis.conversionRatePct.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}`,
       changePct: kpis.conversionChangePct,
+      danger: false,
     },
     {
       key: "roi",
       label: "ROI",
       value: `%${Math.round(kpis.roiPct)}`,
       changePct: kpis.roiChangePct,
+      danger: false,
     },
     {
       key: "growth",
       label: "Growth Rate",
-      value: formatPct(kpis.growthRatePct),
+      value: kpis.growthRatePct === null ? "—" : formatPct(kpis.growthRatePct),
       changePct: kpis.growthRatePct,
-      danger: kpis.growthRatePct < 0,
+      danger: (kpis.growthRatePct ?? 0) < 0,
     },
-  ];
+  ] as const;
 
   const trend = revenueDaily.map((d) => ({
-    day: Number(d.date.slice(8, 10)),
+    date: d.date,
     value: Math.round(d.revenue / 1000),
   }));
+  // Pin each anomaly to the first trend point of its month
+  const anomalyDots = anomalies.flatMap((a) => {
+    const point = trend.find((p) => p.date.slice(0, 7) === a.date.slice(0, 7));
+    return point ? [{ ...a, x: point.date, y: point.value }] : [];
+  });
+  const tickInterval = Math.max(0, Math.floor(trend.length / 6));
 
   return (
-    <div className="flex flex-col gap-3.5 p-4">
+    <>
+      <SummaryStrip
+        items={[
+          {
+            label: "Orders",
+            value: summary.orders.toLocaleString("tr-TR"),
+            note: `${summary.delivered.toLocaleString("tr-TR")} delivered in selected range`,
+          },
+          {
+            label: "Avg Order",
+            value: formatTLCompact(summary.avgOrderValue),
+            note: "revenue ÷ delivered orders",
+          },
+          {
+            label: "Anomalies",
+            value: String(anomalyDots.length),
+            note: "rule R1 hits in selected range",
+          },
+        ]}
+      />
+
       <div className="grid grid-cols-2 gap-2.5">
         {cards.map((card) => {
-          const up = card.changePct >= 0;
           const body = (
             <Card
               key={card.key}
@@ -75,21 +135,27 @@ export default function OverviewPage() {
               >
                 {card.value}
               </div>
-              <div
-                className={`mt-1 flex items-center gap-1 text-[11px] ${up ? "text-mint" : "text-red"}`}
-              >
-                {up ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-                {formatPct(card.changePct)}
-                <span className="ml-0.5 text-faint">· prev. period</span>
-              </div>
-              {card.href && (
+              {card.changePct !== null && (
+                <div
+                  className={`mt-1 flex items-center gap-1 text-[11px] ${card.changePct >= 0 ? "text-mint" : "text-red"}`}
+                >
+                  {card.changePct >= 0 ? (
+                    <ArrowUpRight size={13} />
+                  ) : (
+                    <ArrowDownRight size={13} />
+                  )}
+                  {formatPct(card.changePct)}
+                  <span className="ml-0.5 text-faint">· prev. period</span>
+                </div>
+              )}
+              {"href" in card && card.href && (
                 <div className="mt-1.5 text-[10px] text-mint">
                   tap for details →
                 </div>
               )}
             </Card>
           );
-          return card.href ? (
+          return "href" in card && card.href ? (
             <Link key={card.key} href={card.href}>
               {body}
             </Link>
@@ -101,9 +167,7 @@ export default function OverviewPage() {
 
       <Card className="p-4">
         <div className="mb-2.5 flex justify-between">
-          <span className="text-[13.5px] font-semibold">
-            Last 30 Days · Revenue Trend
-          </span>
+          <span className="text-[13.5px] font-semibold">Revenue Trend</span>
           <span className="text-[11px] text-faint">K ₺ / day</span>
         </div>
         <div className="-mx-2 h-[130px]">
@@ -119,11 +183,12 @@ export default function OverviewPage() {
                 </linearGradient>
               </defs>
               <XAxis
-                dataKey="day"
+                dataKey="date"
                 tick={{ fill: chart.faint, fontSize: 9 }}
                 axisLine={false}
                 tickLine={false}
-                interval={6}
+                interval={tickInterval}
+                tickFormatter={(d: string) => formatDate(d).slice(0, 5)}
               />
               <YAxis
                 tick={{ fill: chart.faint, fontSize: 9 }}
@@ -138,10 +203,35 @@ export default function OverviewPage() {
                 strokeWidth={2}
                 fill="url(#trendFill)"
               />
+              {anomalyDots.map((a) => (
+                <ReferenceDot
+                  key={a.date}
+                  x={a.x}
+                  y={a.y}
+                  r={4}
+                  fill={a.type === "revenue_drop" ? chart.red : chart.amber}
+                  stroke="none"
+                />
+              ))}
             </AreaChart>
           </ResponsiveContainer>
         </div>
+        {anomalyDots.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1">
+            {anomalyDots.map((a) => (
+              <div
+                key={a.date}
+                className="flex items-center gap-1.5 text-[10.5px] text-sub"
+              >
+                <span
+                  className={`size-2 rounded-full ${a.type === "revenue_drop" ? "bg-red" : "bg-amber"}`}
+                />
+                {formatDate(a.date)} · {a.title}
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
-    </div>
+    </>
   );
 }

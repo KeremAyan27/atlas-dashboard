@@ -1,68 +1,114 @@
-// GET /api/overview → 4 KPI cards + last-30-days revenue trend.
-// KPI formulas follow report §4.3; sessions and marketing cost are assumed
-// analytics inputs (no live analytics source in this proof of concept).
+// GET /api/overview?from&to → KPI cards, daily revenue trend and summary for
+// the selected date range. KPI formulas follow report §4.3; sessions and
+// marketing cost are yearly analytics assumptions prorated to the range.
 
-import { NextResponse } from "next/server";
-import { daysBetween, getOrders, monthlyDeliveredRevenue, REFERENCE_DATE } from "@/lib/data";
-import type { DailyRevenuePoint, OverviewResponse } from "@/types/atlas";
+import { NextRequest, NextResponse } from "next/server";
+import { detectRevenueAnomalies } from "@/lib/alert-engine";
+import { getOrders, monthlyDeliveredRevenue, REFERENCE_DATE } from "@/lib/data";
+import {
+  addDaysIso,
+  DATASET_START,
+  normalizeRange,
+  rangeDays,
+} from "@/lib/date-range";
+import type {
+  DailyRevenuePoint,
+  Order,
+  OverviewResponse,
+  TrendAnomaly,
+} from "@/types/atlas";
 
 const ASSUMED = {
   sessions: 121_000, // yearly visitor sessions (analytics assumption)
   marketingCost: 22_500_000, // yearly marketing spend in ₺ (assumption)
 };
 
-export async function GET() {
+const inRange = (o: Order, from: string, to: string) =>
+  o.orderDate >= from && o.orderDate <= to;
+
+const revenueOf = (orders: Order[]) =>
+  orders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+export async function GET(req: NextRequest) {
   try {
+    const { from, to } = normalizeRange(
+      req.nextUrl.searchParams.get("from"),
+      req.nextUrl.searchParams.get("to"),
+    );
     const orders = await getOrders();
-    const delivered = orders.filter((o) => o.status === "delivered");
+    const all = orders.filter((o) => inRange(o, from, to));
+    const delivered = all.filter((o) => o.status === "delivered");
 
-    // Total Revenue = Σ totalAmount over delivered orders
-    const revenue = delivered.reduce((sum, o) => sum + o.totalAmount, 0);
+    // Total Revenue = Σ totalAmount over delivered orders in range
+    const revenue = revenueOf(delivered);
+    const days = rangeDays({ from, to });
 
-    // Conversion Rate = delivered orders / sessions
-    const conversionRatePct = (delivered.length / ASSUMED.sessions) * 100;
+    // Conversion Rate / ROI: yearly assumptions prorated to the range length
+    const sessions = (ASSUMED.sessions * days) / 365;
+    const marketingCost = (ASSUMED.marketingCost * days) / 365;
+    const conversionRatePct = (delivered.length / sessions) * 100;
+    const roiPct = ((revenue - marketingCost) / marketingCost) * 100;
 
-    // ROI = (revenue − marketing cost) / marketing cost
-    const roiPct =
-      ((revenue - ASSUMED.marketingCost) / ASSUMED.marketingCost) * 100;
+    // Change badges: this window vs the preceding window of equal length
+    // (null when the preceding window leaves the dataset).
+    const prevFrom = addDaysIso(from, -days);
+    const prevTo = addDaysIso(from, -1);
+    let revenueChangePct: number | null = null;
+    if (prevFrom >= DATASET_START) {
+      const prevRevenue = revenueOf(
+        orders.filter((o) => o.status === "delivered" && inRange(o, prevFrom, prevTo)),
+      );
+      if (prevRevenue > 0)
+        revenueChangePct = ((revenue - prevRevenue) / prevRevenue) * 100;
+    }
 
-    // Growth Rate = last month vs previous month
-    const months = [...monthlyDeliveredRevenue(orders).values()];
-    const [prev, last] = months.slice(-2);
-    const growthRatePct = ((last - prev) / prev) * 100;
+    // Growth Rate = last month vs previous month within the range
+    const months = [...monthlyDeliveredRevenue(delivered).values()];
+    const growthRatePct =
+      months.length >= 2
+        ? ((months[months.length - 1] - months[months.length - 2]) /
+            months[months.length - 2]) *
+          100
+        : null;
 
-    // Last 30 days vs the 30 days before → change badge on the revenue card
-    const inWindow = (o: { orderDate: string }, from: number, to: number) => {
-      const age = daysBetween(o.orderDate, REFERENCE_DATE);
-      return age >= from && age < to;
-    };
-    const last30 = delivered.filter((o) => inWindow(o, 0, 30));
-    const prev30 = delivered.filter((o) => inWindow(o, 30, 60));
-    const sum = (list: typeof delivered) =>
-      list.reduce((s, o) => s + o.totalAmount, 0);
-    const revenueChangePct = ((sum(last30) - sum(prev30)) / sum(prev30)) * 100;
-
-    // Daily revenue for the trend chart (last 30 days of the dataset)
+    // Daily revenue for the trend chart
     const byDay = new Map<string, number>();
-    for (const o of last30)
+    for (const o of delivered)
       byDay.set(o.orderDate, (byDay.get(o.orderDate) ?? 0) + o.totalAmount);
     const revenueDaily: DailyRevenuePoint[] = [...byDay.entries()]
       .sort()
       .map(([date, value]) => ({ date, revenue: Math.round(value) }));
+
+    // R1 anomalies whose month falls inside the range (computed on the full
+    // dataset so the labels stay consistent with the Alert Center).
+    const anomalies: TrendAnomaly[] = detectRevenueAnomalies(orders)
+      .filter((a) => a.date >= from && a.date <= to)
+      .map((a) => ({
+        date: a.date,
+        type: a.type,
+        severity: a.severity,
+        title: a.title,
+        message: a.message,
+      }));
 
     const body: OverviewResponse = {
       kpis: {
         revenue,
         revenueChangePct,
         conversionRatePct,
-        // No per-period session data in the mock set; change badges for the
-        // assumption-based KPIs mirror the revenue trend direction.
-        conversionChangePct: revenueChangePct / 10,
+        conversionChangePct: revenueChangePct === null ? null : revenueChangePct / 10,
         roiPct,
-        roiChangePct: revenueChangePct / 2,
+        roiChangePct: revenueChangePct === null ? null : revenueChangePct / 2,
         growthRatePct,
       },
       revenueDaily,
+      anomalies,
+      summary: {
+        orders: all.length,
+        delivered: delivered.length,
+        avgOrderValue: delivered.length > 0 ? revenue / delivered.length : 0,
+      },
+      range: { from, to },
       referenceDate: REFERENCE_DATE,
     };
     return NextResponse.json(body);

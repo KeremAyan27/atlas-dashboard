@@ -133,14 +133,15 @@ export interface EngineAlert {
 
 /* ---------- API response shapes ---------- */
 
+/** Change values are null when the comparison window falls outside the dataset. */
 export interface KpiSet {
   revenue: number;
-  revenueChangePct: number;
+  revenueChangePct: number | null;
   conversionRatePct: number;
-  conversionChangePct: number;
+  conversionChangePct: number | null;
   roiPct: number;
-  roiChangePct: number;
-  growthRatePct: number;
+  roiChangePct: number | null;
+  growthRatePct: number | null;
 }
 
 export interface DailyRevenuePoint {
@@ -149,10 +150,30 @@ export interface DailyRevenuePoint {
   revenue: number;
 }
 
+/** Engine anomaly projected onto a time-series chart. */
+export interface TrendAnomaly {
+  /** First day of the anomalous month */
+  date: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+}
+
+export interface OverviewSummary {
+  orders: number;
+  delivered: number;
+  avgOrderValue: number;
+}
+
 export interface OverviewResponse {
   kpis: KpiSet;
-  /** Daily revenue for the last 30 days of the dataset */
+  /** Daily delivered revenue across the selected range */
   revenueDaily: DailyRevenuePoint[];
+  /** R1 anomalies whose month falls inside the selected range */
+  anomalies: TrendAnomaly[];
+  summary: OverviewSummary;
+  range: { from: string; to: string };
   /** Reference "today" used for all relative calculations */
   referenceDate: string;
 }
@@ -181,26 +202,55 @@ export interface CityRevenue {
   cityCount: number;
 }
 
+export interface SalesSummary {
+  revenue: number;
+  orders: number;
+  avgOrderValue: number;
+}
+
 export interface SalesResponse {
   months: MonthlyRevenuePoint[];
   categories: CategoryShare[];
   cities: CityRevenue[];
+  summary: SalesSummary;
+  facets: { categories: string[]; channels: string[] };
+}
+
+export interface StockSummary {
+  totalSkus: number;
+  criticalCount: number;
+  /** Share of (category-filtered) products at or above their critical threshold */
+  fillRatePct: number;
+  /** Stock movements within the selected date range */
+  movementsInRange: number;
 }
 
 export interface StockResponse {
-  criticalCount: number;
   products: Product[];
+  summary: StockSummary;
+  facets: { categories: string[] };
 }
 
-export interface OverduePayment extends Payment {
+export interface ListedPayment extends Payment {
   customerName: string;
-  daysOverdue: number;
+  /** Days past dueDate; null unless the payment is overdue */
+  daysOverdue: number | null;
+}
+
+export interface PaymentStatusTotal {
+  amount: number;
+  count: number;
 }
 
 export interface PaymentsResponse {
-  totals: { paid: number; pending: number; overdue: number };
-  overdueAmount: number;
-  overduePayments: OverduePayment[];
+  summary: {
+    paid: PaymentStatusTotal;
+    pending: PaymentStatusTotal;
+    overdue: PaymentStatusTotal;
+  };
+  payments: ListedPayment[];
+  /** payments[] is capped; matchingCount is the uncapped total */
+  matchingCount: number;
   referenceDate: string;
 }
 
