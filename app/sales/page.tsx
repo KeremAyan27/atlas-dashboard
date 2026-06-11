@@ -19,7 +19,8 @@ import {
   YAxis,
 } from "recharts";
 import { useApi } from "@/lib/use-api";
-import { CHART, formatTLCompact } from "@/lib/format";
+import { formatTLCompact } from "@/lib/format";
+import { useTheme } from "@/components/theme";
 import { Card, ErrorState, LoadingState, SEVERITY } from "@/components/ui";
 import type { SalesResponse } from "@/types/atlas";
 
@@ -29,10 +30,11 @@ const RANGES = [
   { label: "12 Months", value: 12 },
 ] as const;
 
-const PIE_COLORS = [CHART.mint, CHART.blue, CHART.violet, CHART.amber, CHART.faint];
 
 export default function SalesPage() {
   const [range, setRange] = useState<number>(12);
+  const { chart } = useTheme();
+  const PIE_COLORS = [chart.mint, chart.blue, chart.violet, chart.amber, chart.faint];
   const [selected, setSelected] = useState(2); // tap-to-focus index
   const { data, loading, error } = useApi<SalesResponse>(
     `/api/sales?range=${range}`,
@@ -67,7 +69,7 @@ export default function SalesPage() {
             }}
             className={`flex-1 cursor-pointer rounded-[10px] border py-2 text-xs font-semibold ${
               range === r.value
-                ? "border-mint bg-mint text-bg"
+                ? "border-mint bg-mint text-on-accent"
                 : "border-line text-sub"
             }`}
           >
@@ -106,18 +108,18 @@ export default function SalesPage() {
               }}
               margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
             >
-              <CartesianGrid stroke={CHART.line} vertical={false} />
+              <CartesianGrid stroke={chart.line} vertical={false} />
               {/* hidden tooltip: enables tap/click month tracking on mobile */}
               <Tooltip content={() => null} cursor={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fill: CHART.faint, fontSize: 10 }}
+                tick={{ fill: chart.faint, fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
                 interval={0}
               />
               <YAxis
-                tick={{ fill: CHART.faint, fontSize: 10 }}
+                tick={{ fill: chart.faint, fontSize: 10 }}
                 axisLine={false}
                 tickLine={false}
                 width={30}
@@ -126,17 +128,17 @@ export default function SalesPage() {
               <Line
                 type="monotone"
                 dataKey="valueM"
-                stroke={CHART.mint}
+                stroke={chart.mint}
                 strokeWidth={2.4}
-                dot={{ r: 2.5, fill: CHART.bg, stroke: CHART.mint, strokeWidth: 1.5 }}
-                activeDot={{ r: 5, fill: CHART.mint }}
+                dot={{ r: 2.5, fill: chart.bg, stroke: chart.mint, strokeWidth: 1.5 }}
+                activeDot={{ r: 5, fill: chart.mint }}
               />
               <ReferenceDot
                 x={point.label}
                 y={point.valueM}
                 r={6}
-                fill={CHART.text}
-                stroke={CHART.mint}
+                fill={chart.text}
+                stroke={chart.mint}
                 strokeWidth={2}
               />
               {months
@@ -147,7 +149,7 @@ export default function SalesPage() {
                     x={m.label}
                     y={m.valueM}
                     r={3.5}
-                    fill={m.anomaly?.type === "revenue_drop" ? CHART.red : CHART.amber}
+                    fill={m.anomaly?.type === "revenue_drop" ? chart.red : chart.amber}
                   />
                 ))}
             </LineChart>

@@ -27,17 +27,5 @@ export const formatPct = (n: number, digits = 1): string =>
     maximumFractionDigits: digits,
   })}`;
 
-/* Chart colors (Recharts needs literal values; keep in sync with globals.css) */
-export const CHART = {
-  bg: "#0A0E14",
-  panel2: "#161C28",
-  line: "#202838",
-  text: "#E6EBF2",
-  sub: "#8A95A8",
-  faint: "#5B6577",
-  mint: "#3DDC97",
-  amber: "#F5B544",
-  red: "#FF6B6B",
-  blue: "#5BA8FF",
-  violet: "#B69CFF",
-} as const;
+// Chart colors are theme-dependent — read them via useTheme().chart
+// (components/theme.tsx), which resolves the CSS variables in globals.css.

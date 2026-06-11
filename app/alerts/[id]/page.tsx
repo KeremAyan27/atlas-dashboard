@@ -103,7 +103,7 @@ export default function AlertDetailPage({
                 markRead(alert.id);
               }}
               className={`flex cursor-pointer items-center gap-1.5 rounded-[10px] px-3 py-2 text-[11.5px] font-semibold ${
-                i === 0 ? "bg-mint text-bg" : "border border-line"
+                i === 0 ? "bg-mint text-on-accent" : "border border-line"
               }`}
             >
               <Icon size={13} />
@@ -129,7 +129,7 @@ export default function AlertDetailPage({
             markRead(alert.id);
             toast("✓ Forwarded to marketing team");
           }}
-          className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-blue py-2.5 text-xs font-semibold text-bg"
+          className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-blue py-2.5 text-xs font-semibold text-on-accent"
         >
           <Send size={13} /> Forward to Marketing
         </button>

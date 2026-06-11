@@ -22,11 +22,14 @@ import {
   CheckCircle2,
   Info,
   LayoutGrid,
+  Moon,
   Package,
+  Sun,
   TrendingUp,
   Wallet,
   X,
 } from "lucide-react";
+import { ThemeProvider, useTheme } from "@/components/theme";
 import { useApi } from "@/lib/use-api";
 import { formatDate } from "@/lib/format";
 import { Card, SeverityPill, SEVERITY } from "@/components/ui";
@@ -90,7 +93,16 @@ export function AlertIcon({ alert, size = 15 }: { alert: EngineAlert; size?: num
 /* ---------- shell ---------- */
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <ThemeProvider>
+      <Shell>{children}</Shell>
+    </ThemeProvider>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { toggle } = useTheme();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -122,20 +134,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <AlertsContext.Provider value={{ alerts, loading, error, readIds, markRead }}>
         <div className="relative mx-auto flex min-h-dvh max-w-md flex-col bg-bg">
           {/* ambient glow, as in the prototype */}
-          <div
-            className="pointer-events-none absolute -top-28 -right-20 size-64"
-            style={{
-              background:
-                "radial-gradient(circle, rgba(61,220,151,.16), transparent 70%)",
-            }}
-          />
+          <div className="app-glow pointer-events-none absolute -top-28 -right-20 size-64" />
 
           {/* top bar */}
           <header className="relative z-10 flex items-start justify-between px-4 pt-4 pb-3">
             <div>
               <div className="flex items-center gap-2">
                 <span className="flex size-[22px] items-center justify-center rounded-[7px] bg-mint">
-                  <Activity size={14} className="text-bg" />
+                  <Activity size={14} className="text-on-accent" />
                 </span>
                 <span className="font-display text-[15px] font-bold">Atlas</span>
                 <span className="rounded-md border border-line px-1.5 py-px text-[9.5px] text-faint">
@@ -150,6 +156,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Link href="/about" aria-label="About & Limitations" className="text-sub">
                 <Info size={19} />
               </Link>
+              {/* icon swap is CSS-driven (dark: variant) to stay hydration-safe */}
+              <button
+                aria-label="Toggle color theme"
+                onClick={toggle}
+                className="cursor-pointer text-sub"
+              >
+                <Sun size={19} className="hidden dark:block" />
+                <Moon size={19} className="dark:hidden" />
+              </button>
               <button
                 aria-label="Open Alert Center"
                 onClick={() => setDrawerOpen(true)}

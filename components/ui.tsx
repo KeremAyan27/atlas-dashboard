@@ -16,7 +16,7 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={`rounded-card border border-line bg-panel ${onClick ? "cursor-pointer" : ""} ${className}`}
+      className={`rounded-card border border-line bg-panel shadow-card ${onClick ? "cursor-pointer" : ""} ${className}`}
     >
       {children}
     </div>

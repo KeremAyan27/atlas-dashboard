@@ -32,11 +32,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A0E14",
+  themeColor: "#F7F8FA",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
 };
+
+// Applies the stored theme before first paint (light is the default).
+const THEME_INIT = `try{if(localStorage.getItem("atlas-theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`;
 
 export default function RootLayout({
   children,
@@ -44,7 +47,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${manrope.variable} ${sora.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${manrope.variable} ${sora.variable} h-full antialiased`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
       <body className="min-h-full">
         <AppShell>{children}</AppShell>
       </body>

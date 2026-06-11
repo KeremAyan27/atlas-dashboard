@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
       "Mobile-first decision support system with rule-based anomaly alerts.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0A0E14",
-    theme_color: "#0A0E14",
+    background_color: "#F7F8FA",
+    theme_color: "#F7F8FA",
     orientation: "portrait",
     icons: [
       {

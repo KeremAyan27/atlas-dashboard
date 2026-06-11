@@ -12,12 +12,14 @@ import {
   YAxis,
 } from "recharts";
 import { useApi } from "@/lib/use-api";
-import { CHART, formatPct, formatTLCompact } from "@/lib/format";
+import { formatPct, formatTLCompact } from "@/lib/format";
+import { useTheme } from "@/components/theme";
 import { Card, ErrorState, LoadingState } from "@/components/ui";
 import type { OverviewResponse } from "@/types/atlas";
 
 export default function OverviewPage() {
   const { data, loading, error } = useApi<OverviewResponse>("/api/overview");
+  const { chart } = useTheme();
 
   if (loading) return <LoadingState label="Loading KPIs…" />;
   if (error || !data) return <ErrorState message={error ?? "No data"} />;
@@ -112,19 +114,19 @@ export default function OverviewPage() {
             >
               <defs>
                 <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={CHART.mint} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={CHART.mint} stopOpacity={0} />
+                  <stop offset="0%" stopColor={chart.mint} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={chart.mint} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="day"
-                tick={{ fill: CHART.faint, fontSize: 9 }}
+                tick={{ fill: chart.faint, fontSize: 9 }}
                 axisLine={false}
                 tickLine={false}
                 interval={6}
               />
               <YAxis
-                tick={{ fill: CHART.faint, fontSize: 9 }}
+                tick={{ fill: chart.faint, fontSize: 9 }}
                 axisLine={false}
                 tickLine={false}
                 width={36}
@@ -132,7 +134,7 @@ export default function OverviewPage() {
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke={CHART.mint}
+                stroke={chart.mint}
                 strokeWidth={2}
                 fill="url(#trendFill)"
               />

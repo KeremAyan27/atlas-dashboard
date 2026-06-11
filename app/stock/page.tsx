@@ -69,7 +69,7 @@ export default function StockPage() {
                 onClick={() =>
                   toast(`✓ Order placed with ${p.supplier} for ${p.name}`)
                 }
-                className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-mint py-2.5 text-xs font-semibold text-bg"
+                className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-[11px] bg-mint py-2.5 text-xs font-semibold text-on-accent"
               >
                 <Truck size={14} /> Order from Supplier
               </button>

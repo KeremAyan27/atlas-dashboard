@@ -1,7 +1,56 @@
 @import "tailwindcss";
 
-/* Atlas dark theme tokens — keep in sync with CHART in lib/format.ts */
+/* Class-based dark mode: `dark:` utilities react to html.dark, not the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Atlas theme tokens.
+ * Light is the default; html.dark swaps every --color-* variable to the
+ * original dark palette. Components and charts consume these variables only —
+ * chart code reads them at runtime via useTheme() (components/theme.tsx).
+ *
+ * Light accents are darkened for WCAG AA contrast on white/off-white:
+ *   mint #15835A (4.7:1 on #fff), amber #9A6700, red #C92A2A,
+ *   blue #2563C9, violet #6741D9 — all ≥ 4.5:1 against white.
+ */
 @theme {
+  /* Light theme (default) — editorial warm off-white */
+  --color-bg: #f7f8fa;
+  --color-panel: #ffffff;
+  --color-panel2: #eff2f6;
+  --color-line: #e4e8ef;
+  --color-ink: #1a2230;
+  --color-sub: #4d5a70;
+  --color-faint: #6e7a8f;
+  --color-mint: #15835a;
+  --color-mint-dim: #b7e0ce;
+  --color-amber: #9a6700;
+  --color-red: #c92a2a;
+  --color-blue: #2563c9;
+  --color-violet: #6741d9;
+  /* text placed on solid mint/blue surfaces */
+  --color-on-accent: #ffffff;
+
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 18px;
+}
+
+/* Card shadow + ambient glow differ per theme (not Tailwind utilities). */
+:root {
+  --card-shadow:
+    0 1px 2px rgb(26 34 48 / 0.04),
+    0 4px 16px rgb(26 34 48 / 0.05);
+  --glow: rgb(21 131 90 / 0.08);
+}
+
+@theme inline {
+  --shadow-card: var(--card-shadow);
+}
+
+/* Dark theme — the original palette, unchanged */
+.dark {
   --color-bg: #0a0e14;
   --color-panel: #11161f;
   --color-panel2: #161c28;
@@ -15,11 +64,10 @@
   --color-red: #ff6b6b;
   --color-blue: #5ba8ff;
   --color-violet: #b69cff;
+  --color-on-accent: #0a0e14;
 
-  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
-
-  --radius-card: 18px;
+  --card-shadow: 0 0 #0000;
+  --glow: rgb(61 220 151 / 0.16);
 }
 
 * {
@@ -30,6 +78,10 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+}
+
+.app-glow {
+  background: radial-gradient(circle, var(--glow), transparent 70%);
 }
 
 .scroll-hidden::-webkit-scrollbar {

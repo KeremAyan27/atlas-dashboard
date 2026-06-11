@@ -64,7 +64,7 @@ export default function PaymentsPage() {
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => toast(`✓ Reminder sent to ${p.customerName}`)}
-              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] bg-mint py-2 text-[11.5px] font-semibold text-bg"
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[10px] bg-mint py-2 text-[11.5px] font-semibold text-on-accent"
             >
               <Send size={13} /> Send Reminder
             </button>
