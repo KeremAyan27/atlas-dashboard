@@ -10,7 +10,7 @@
  * chart code reads them at runtime via useTheme() (components/theme.tsx).
  *
  * Light accents are darkened for WCAG AA contrast on white/off-white:
- *   mint #15835A (4.7:1 on #fff), amber #9A6700, red #C92A2A,
+ *   mint #127A53 (5.3:1 on #fff), amber #9A6700, red #C92A2A,
  *   blue #2563C9, violet #6741D9 — all ≥ 4.5:1 against white.
  */
 @theme {
@@ -21,8 +21,8 @@
   --color-line: #e4e8ef;
   --color-ink: #1a2230;
   --color-sub: #4d5a70;
-  --color-faint: #6e7a8f;
-  --color-mint: #15835a;
+  --color-faint: #626e85;
+  --color-mint: #127a53;
   --color-mint-dim: #b7e0ce;
   --color-amber: #9a6700;
   --color-red: #c92a2a;

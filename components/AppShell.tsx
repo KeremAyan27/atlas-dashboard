@@ -165,8 +165,13 @@ function Shell({ children }: { children: React.ReactNode }) {
                 <Sun size={19} className="hidden dark:block" />
                 <Moon size={19} className="dark:hidden" />
               </button>
+              {/* the visible badge count must appear in the accessible name (WCAG 2.5.3) */}
               <button
-                aria-label="Open Alert Center"
+                aria-label={
+                  unread > 0
+                    ? `Open Alert Center, ${unread} unread`
+                    : "Open Alert Center"
+                }
                 onClick={() => setDrawerOpen(true)}
                 className="relative cursor-pointer text-ink"
               >
